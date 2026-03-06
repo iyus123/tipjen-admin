@@ -1,16 +1,19 @@
 import "./globals.css";
-import type { Metadata } from "next";
-import { env } from "@/lib/env";
+import Script from "next/script";
+import { themeScript } from "@/lib/theme-script";
 
-export const metadata: Metadata = {
-  title: `${env.storeName} Admin`,
-  description: `Dashboard admin cozy untuk mengelola katalog ${env.storeName}`,
+export const metadata = {
+  title: "Tipjen Admin",
+  description: "Dashboard admin Tipjen",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="id">
-      <body>{children}</body>
+    <html lang="id" suppressHydrationWarning>
+      <body>
+        <Script id="theme-script" strategy="beforeInteractive">{themeScript}</Script>
+        {children}
+      </body>
     </html>
   );
 }
