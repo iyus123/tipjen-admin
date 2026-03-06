@@ -1,19 +1,30 @@
-import { NextResponse } from "next/server";
-import { getServiceSupabase } from "@/lib/supabase-server";
+import { NextResponse } from 'next/server';
+import { supabaseServer } from '@/lib/supabase-server';
+import type { ProductPayload } from '@/lib/types';
 
-export async function POST(req: Request) {
-  const body = await req.json();
-  const supabase = getServiceSupabase();
-  const { data, error } = await supabase.from("products").insert(body).select("*").single();
+export async function GET() {
+  const { data, error } = await supabaseServer
+    .from('products')
+    .select('*')
+    .order('updated_at', { ascending: false });
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  return NextResponse.json(data ?? []);
 }
 
-export async function PUT(req: Request) {
-  const body = await req.json();
-  const { id, ...payload } = body;
-  const supabase = getServiceSupabase();
-  const { data, error } = await supabase.from("products").update(payload).eq("id", id).select("*").single();
+export async function POST(request: Request) {
+  const body = (await request.json()) as ProductPayload;
+  const payload = {
+    ...body,
+    tags: Array.isArray(body.tags) ? body.tags : [],
+  };
+
+  const { data, error } = await supabaseServer
+    .from('products')
+    .insert(payload)
+    .select('*')
+    .single();
+
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json(data);
 }
