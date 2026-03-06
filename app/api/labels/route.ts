@@ -1,12 +1,46 @@
 import { NextResponse } from "next/server";
 import { getServiceSupabase } from "@/lib/supabase-server";
 
+export async function GET() {
+  try {
+    const supabase = getServiceSupabase();
+
+    const { data, error } = await supabase
+      .from("labels")
+      .select("*")
+      .order("name");
+
+    if (error) {
+      console.error(error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "server error" }, { status: 500 });
+  }
+}
+
 export async function POST(req: Request) {
-  const { name } = await req.json();
-  const value = String(name || "").trim();
-  if (!value) return NextResponse.json({ error: "Name required" }, { status: 400 });
-  const supabase = getServiceSupabase();
-  const { data, error } = await supabase.from("product_labels").upsert({ name: value }, { onConflict: "name" }).select("*").single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+  try {
+    const supabase = getServiceSupabase();
+    const body = await req.json();
+
+    const { data, error } = await supabase
+      .from("labels")
+      .insert({ name: body.name })
+      .select()
+      .single();
+
+    if (error) {
+      console.error(error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json(data);
+  } catch (err) {
+    console.error(err);
+    return NextResponse.json({ error: "server error" }, { status: 500 });
+  }
 }
