@@ -1,451 +1,371 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
-import {
-  BadgePlus,
-  Eye,
-  EyeOff,
-  ImagePlus,
-  LayoutDashboard,
-  LogOut,
-  PencilLine,
-  Search,
-  ShieldCheck,
-  Sparkles,
-  Trash2,
-  Upload,
-} from "lucide-react";
-import { Product } from "@/lib/types";
+import { Eye, EyeOff, Moon, Pencil, Plus, Save, Search, Sun, Trash2, Upload, X } from 'lucide-react';
+import { useEffect, useMemo, useState } from 'react';
+import type { Product, ProductPayload } from '@/lib/types';
+import { cn, formatRupiah } from '@/lib/utils';
 
-const formatter = new Intl.NumberFormat("id-ID", {
-  style: "currency",
-  currency: "IDR",
-  maximumFractionDigits: 0,
-});
-
-type FormState = {
-  id?: string;
-  name: string;
-  category: string;
-  description: string;
-  price: string;
-  stock: string;
-  image_url: string;
-  published: boolean;
+const blankForm: ProductPayload = {
+  name: '',
+  description: '',
+  category: '',
+  price: 0,
+  stock: 0,
+  image_url: '',
+  is_published: true,
+  tags: [],
 };
 
-const blankForm: FormState = {
-  name: "",
-  category: "",
-  description: "",
-  price: "",
-  stock: "",
-  image_url: "",
-  published: true,
-};
-
-export default function AdminDashboard({ storeName, whatsappNumber }: { storeName: string; whatsappNumber: string }) {
-  const [isChecking, setIsChecking] = useState(true);
-  const [authenticated, setAuthenticated] = useState(false);
-  const [password, setPassword] = useState("");
-  const [loginError, setLoginError] = useState("");
+export default function AdminDashboard() {
+  const [dark, setDark] = useState(false);
+  const [password, setPassword] = useState('');
+  const [isAuthed, setIsAuthed] = useState(false);
+  const [search, setSearch] = useState('');
   const [products, setProducts] = useState<Product[]>([]);
-  const [search, setSearch] = useState("");
-  const [tab, setTab] = useState<"dashboard" | "manage">("dashboard");
-  const [form, setForm] = useState<FormState>(blankForm);
-  const [submitState, setSubmitState] = useState<"idle" | "saving">("idle");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [form, setForm] = useState<ProductPayload>(blankForm);
+  const [storedTags, setStoredTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [message, setMessage] = useState('');
+  const storeName = process.env.NEXT_PUBLIC_STORE_NAME || 'Tipjen';
+  const adminPassword = process.env.NEXT_PUBLIC_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD || 'admin123';
 
   useEffect(() => {
-    void checkAuth();
+    const savedTheme = localStorage.getItem('tipjen-admin-theme');
+    if (savedTheme === 'dark') {
+      setDark(true);
+      document.body.classList.add('dark');
+    }
+    const savedTags = localStorage.getItem('tipjen-admin-tags');
+    if (savedTags) setStoredTags(JSON.parse(savedTags));
   }, []);
 
-  async function checkAuth() {
-    try {
-      const response = await fetch("/api/admin/check", { cache: "no-store" });
-      const data = await response.json();
-      setAuthenticated(Boolean(data.authenticated));
-      if (data.authenticated) {
-        await loadProducts();
-      }
-    } finally {
-      setIsChecking(false);
-    }
-  }
+  useEffect(() => {
+    document.body.classList.toggle('dark', dark);
+    localStorage.setItem('tipjen-admin-theme', dark ? 'dark' : 'light');
+  }, [dark]);
 
-  async function loadProducts() {
-    const response = await fetch("/api/products", { cache: "no-store" });
-    const data = await response.json();
+  useEffect(() => {
+    localStorage.setItem('tipjen-admin-tags', JSON.stringify(storedTags));
+  }, [storedTags]);
 
-    if (!response.ok) {
-      setError(data.error || "Gagal memuat produk.");
-      return;
-    }
-
-    setProducts(data.products || []);
-  }
+  useEffect(() => {
+    if (!isAuthed) return;
+    void loadProducts();
+  }, [isAuthed]);
 
   const filteredProducts = useMemo(() => {
-    const keyword = search.toLowerCase();
-    return products.filter((product) =>
-      [product.name, product.category || "", product.description || ""]
-        .join(" ")
+    return products.filter((item) =>
+      [item.name, item.category ?? '', item.description ?? '', ...(item.tags ?? [])]
+        .join(' ')
         .toLowerCase()
-        .includes(keyword)
+        .includes(search.toLowerCase())
     );
   }, [products, search]);
 
-  async function handleLogin(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setLoginError("");
-
-    const response = await fetch("/api/admin/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setLoginError(data.error || "Login gagal.");
+  async function loadProducts() {
+    const res = await fetch('/api/products', { cache: 'no-store' });
+    const data = (await res.json()) as Product[] | { error: string };
+    if (!res.ok || !Array.isArray(data)) {
+      setMessage('Gagal memuat produk');
       return;
     }
-
-    setAuthenticated(true);
-    setPassword("");
-    await loadProducts();
+    setProducts(data);
   }
 
-  async function handleLogout() {
-    await fetch("/api/admin/logout", { method: "POST" });
-    setAuthenticated(false);
-    setProducts([]);
-    setForm(blankForm);
-    setMessage("");
-    setError("");
+  function notify(text: string) {
+    setMessage(text);
+    window.clearTimeout((notify as unknown as { timer?: number }).timer);
+    (notify as unknown as { timer?: number }).timer = window.setTimeout(() => setMessage(''), 1800);
   }
 
-  function fillForm(product: Product) {
-    setForm({
-      id: product.id,
-      name: product.name,
-      category: product.category || "",
-      description: product.description || "",
-      price: String(product.price),
-      stock: String(product.stock),
-      image_url: product.image_url || "",
-      published: product.published,
-    });
-    setTab("manage");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+  function handleLogin() {
+    if (password === adminPassword) {
+      setIsAuthed(true);
+      notify('Berhasil masuk ke dashboard admin');
+      return;
+    }
+    notify('Password admin salah');
   }
 
   function resetForm() {
     setForm(blankForm);
+    setEditingId(null);
+    setTagInput('');
   }
 
-  async function handleImageUpload(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
+  function addTag(tag: string) {
+    const clean = tag.trim();
+    if (!clean) return;
+    if (!storedTags.includes(clean)) setStoredTags((prev) => [...prev, clean]);
+    if (!form.tags.includes(clean)) {
+      setForm((prev) => ({ ...prev, tags: [...prev.tags, clean] }));
+    }
+  }
 
-    if (!file.type.startsWith("image/")) {
-      setError("File harus berupa gambar.");
+  function removeTag(tag: string) {
+    setForm((prev) => ({ ...prev, tags: prev.tags.filter((item) => item !== tag) }));
+  }
+
+  async function handleSubmit() {
+    const payload = {
+      ...form,
+      price: Number(form.price || 0),
+      stock: Number(form.stock || 0),
+      category: form.category.trim(),
+      description: form.description.trim(),
+      image_url: form.image_url,
+      tags: form.tags,
+    };
+
+    const url = editingId ? `/api/products/${editingId}` : '/api/products';
+    const method = editingId ? 'PATCH' : 'POST';
+
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      notify('Gagal menyimpan produk');
       return;
     }
 
+    await loadProducts();
+    notify(editingId ? 'Produk berhasil diperbarui' : 'Produk berhasil ditambahkan');
+    resetForm();
+  }
+
+  function startEdit(product: Product) {
+    setEditingId(product.id);
+    setForm({
+      name: product.name,
+      description: product.description ?? '',
+      category: product.category ?? '',
+      price: Number(product.price),
+      stock: Number(product.stock),
+      image_url: product.image_url ?? '',
+      is_published: product.is_published ?? false,
+      tags: product.tags ?? [],
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function deleteProduct(id: string) {
+    const res = await fetch(`/api/products/${id}`, { method: 'DELETE' });
+    if (!res.ok) {
+      notify('Gagal menghapus produk');
+      return;
+    }
+    await loadProducts();
+    notify('Produk berhasil dihapus');
+  }
+
+  async function toggleProduct(id: string, nextValue: boolean) {
+    const res = await fetch(`/api/products/${id}/toggle`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_published: nextValue }),
+    });
+    if (!res.ok) {
+      notify('Gagal mengubah status produk');
+      return;
+    }
+    await loadProducts();
+    notify(nextValue ? 'Produk ditampilkan di buyer' : 'Produk disembunyikan dari buyer');
+  }
+
+  function onFileChange(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
     const reader = new FileReader();
     reader.onload = () => {
-      setForm((current) => ({ ...current, image_url: String(reader.result || "") }));
-      setError("");
-      setMessage("Gambar dari galeri berhasil dimuat.");
+      setForm((prev) => ({ ...prev, image_url: String(reader.result || '') }));
     };
     reader.readAsDataURL(file);
   }
 
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setSubmitState("saving");
-    setMessage("");
-    setError("");
+  const shell = dark ? 'bg-[#020817] text-white' : 'bg-[#f8f2ec] text-[#4a342b]';
+  const card = dark ? 'border-white/10 bg-white/5' : 'border-[#ead9cc] bg-white';
+  const input = dark ? 'border-white/10 bg-white/5 text-white' : 'border-[#ead9cc] bg-[#fffaf6] text-[#4a342b]';
+  const soft = dark ? 'text-slate-300' : 'text-[#84685c]';
 
-    const payload = {
-      id: form.id,
-      name: form.name.trim(),
-      category: form.category.trim(),
-      description: form.description.trim(),
-      price: Number(form.price || 0),
-      stock: Number(form.stock || 0),
-      image_url: form.image_url,
-      published: form.published,
-    };
-
-    const response = await fetch("/api/products", {
-      method: form.id ? "PUT" : "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setSubmitState("idle");
-      setError(data.error || "Gagal menyimpan produk.");
-      return;
-    }
-
-    setSubmitState("idle");
-    setMessage(form.id ? "Produk berhasil diperbarui." : "Produk baru berhasil ditambahkan.");
-    resetForm();
-    await loadProducts();
-    setTab("dashboard");
-  }
-
-  async function togglePublish(product: Product) {
-    setError("");
-    setMessage("");
-
-    const response = await fetch("/api/products", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: product.id,
-        name: product.name,
-        category: product.category || "",
-        description: product.description || "",
-        price: product.price,
-        stock: product.stock,
-        image_url: product.image_url || "",
-        published: !product.published,
-      }),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      setError(data.error || "Gagal mengubah status produk.");
-      return;
-    }
-
-    setMessage(product.published ? "Produk disembunyikan dari buyer." : "Produk ditampilkan ke buyer.");
-    await loadProducts();
-  }
-
-  async function removeProduct(id: string) {
-    const confirmed = window.confirm("Yakin ingin menghapus produk ini?");
-    if (!confirmed) return;
-
-    const response = await fetch(`/api/products?id=${id}`, { method: "DELETE" });
-    const data = await response.json();
-
-    if (!response.ok) {
-      setError(data.error || "Gagal menghapus produk.");
-      return;
-    }
-
-    setMessage("Produk berhasil dihapus.");
-    await loadProducts();
-  }
-
-  if (isChecking) {
-    return <div className="login-wrap"><div className="card" style={{ padding: 28 }}>Memuat dashboard admin...</div></div>;
-  }
-
-  if (!authenticated) {
+  if (!isAuthed) {
     return (
-      <div className="login-wrap">
-        <div className="card" style={{ width: "100%", maxWidth: 520, padding: 28 }}>
-          <div className="stack-lg">
-            <div className="stack-sm">
-              <span className="badge"><ShieldCheck size={16} /> Area khusus penjual</span>
-              <h1 className="title-lg">Admin {storeName}</h1>
-              <p className="muted">Masuk ke dashboard cozy untuk mengatur katalog, harga, stok, status tayang, dan upload gambar langsung dari galeri.</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="stack-md">
-              <div className="field">
-                <label className="label">Password admin</label>
-                <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Masukkan password" required />
-              </div>
-
-              {loginError ? <div className="alert">{loginError}</div> : null}
-
-              <button className="btn btn-primary" type="submit">Masuk ke Dashboard</button>
-            </form>
+      <div className={cn('min-h-screen px-6 py-10', shell)}>
+        <div className={cn('mx-auto max-w-md rounded-[30px] border p-6', card)}>
+          <h1 className="text-3xl font-bold">{storeName} Admin</h1>
+          <p className={cn('mt-2 text-sm', soft)}>Masuk untuk mengelola katalog, tag, dan status tayang produk.</p>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Masukkan password admin"
+            className={cn('mt-5 w-full rounded-2xl border px-4 py-3 outline-none', input)}
+          />
+          <div className="mt-4 flex gap-3">
+            <button onClick={handleLogin} className="rounded-2xl bg-[#4f342b] px-5 py-3 font-semibold text-white">
+              Masuk
+            </button>
+            <button onClick={() => setDark((v) => !v)} className={cn('rounded-2xl border px-5 py-3 font-semibold', input)}>
+              {dark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+            </button>
           </div>
+          {message && <p className="mt-4 text-sm text-amber-600">{message}</p>}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="shell stack-lg">
-      <section className="hero" style={{ padding: 28 }}>
-        <div className="row-between wrap">
-          <div className="stack-sm" style={{ maxWidth: 760 }}>
-            <span className="badge soft"><Sparkles size={16} /> Dashboard nyaman dan kekinian</span>
-            <h1 className="title-xl">Kelola katalog {storeName} dengan lebih rapi, cozy, dan cepat.</h1>
-            <p className="muted">Semua produk yang Anda publish di sini akan langsung tersinkron ke web buyer. Nomor WhatsApp aktif: <b>{whatsappNumber}</b>.</p>
-          </div>
-
-          <div className="stack-sm" style={{ alignItems: "flex-end" }}>
-            <div className="pill-nav">
-              <button className={`btn ${tab === "dashboard" ? "btn-primary" : "btn-soft"}`} onClick={() => setTab("dashboard")}><LayoutDashboard size={16} /> Dashboard</button>
-              <button className={`btn ${tab === "manage" ? "btn-primary" : "btn-soft"}`} onClick={() => setTab("manage")}><BadgePlus size={16} /> Kelola Produk</button>
-            </div>
-            <button className="btn btn-danger" onClick={handleLogout}><LogOut size={16} /> Keluar</button>
-          </div>
+    <div className={cn('min-h-screen px-6 py-8', shell)}>
+      {message && (
+        <div className={cn('fixed right-6 top-6 z-50 rounded-2xl border px-4 py-3 text-sm shadow-xl', dark ? 'border-emerald-400/20 bg-emerald-400/20 text-emerald-200' : 'border-emerald-200 bg-white text-emerald-700')}>
+          {message}
         </div>
-      </section>
+      )}
 
-      {message ? <div className="notice">{message}</div> : null}
-      {error ? <div className="alert">{error}</div> : null}
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className={cn('text-sm font-medium', soft)}>Tipjen Admin</p>
+            <h1 className="mt-1 text-3xl font-bold">Kelola produk dengan mudah</h1>
+          </div>
+          <button onClick={() => setDark((v) => !v)} className={cn('rounded-2xl border px-4 py-3 font-medium', input)}>
+            {dark ? 'Mode terang' : 'Mode gelap'}
+          </button>
+        </div>
 
-      {tab === "dashboard" ? (
-        <>
-          <section className="stats">
-            <div className="stat"><span className="muted">Total produk</span><b>{products.length}</b></div>
-            <div className="stat"><span className="muted">Sedang tayang</span><b>{products.filter((item) => item.published).length}</b></div>
-            <div className="stat"><span className="muted">Masih draft</span><b>{products.filter((item) => !item.published).length}</b></div>
-          </section>
-
-          <section className="panel" style={{ padding: 24 }}>
-            <div className="row-between wrap" style={{ marginBottom: 18 }}>
-              <div className="stack-sm">
-                <h2 className="title-lg">Semua produk</h2>
-                <p className="muted">Klik edit untuk memperbarui detail. Gunakan tampilkan/sembunyikan untuk mengatur visibilitas di web buyer.</p>
+        <div className="grid gap-6 xl:grid-cols-[1.1fr,1.4fr]">
+          <section className={cn('rounded-[28px] border p-5', card)}>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-bold">{editingId ? 'Edit produk' : 'Tambah produk'}</h2>
+                <p className={cn('mt-1 text-sm', soft)}>Form ini sinkron langsung ke web buyer.</p>
               </div>
-              <div style={{ minWidth: 280, flex: 1, maxWidth: 380, position: "relative" }}>
-                <Search size={18} style={{ position: "absolute", top: 15, left: 14, color: "#7c685d" }} />
-                <input className="input" style={{ paddingLeft: 40 }} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari nama, kategori, deskripsi..." />
-              </div>
-            </div>
-
-            <div className="table-list">
-              {filteredProducts.length === 0 ? (
-                <div className="empty">Belum ada produk. Tambahkan produk pertama Anda dari tab Kelola Produk.</div>
-              ) : (
-                filteredProducts.map((product) => (
-                  <div className="product-item" key={product.id}>
-                    <img className="product-thumb" src={product.image_url || "https://placehold.co/300x300/f0e3d8/8f5a40?text=Tipjen"} alt={product.name} />
-                    <div className="product-meta">
-                      <div className="row wrap">
-                        <h3 className="title-md">{product.name}</h3>
-                        <span className={`badge ${product.published ? "green" : ""}`}>{product.published ? "Tampil di buyer" : "Disembunyikan"}</span>
-                        {product.category ? <span className="badge soft">{product.category}</span> : null}
-                      </div>
-                      <p className="muted">{product.description || "Belum ada deskripsi produk."}</p>
-                      <div className="row wrap">
-                        <span className="price">{formatter.format(product.price)}</span>
-                        <span className="muted">Stok: {product.stock}</span>
-                      </div>
-                    </div>
-                    <div className="stack-sm">
-                      <button className="btn btn-soft" onClick={() => fillForm(product)}><PencilLine size={16} /> Edit</button>
-                      <button className="btn btn-soft" onClick={() => togglePublish(product)}>{product.published ? <EyeOff size={16} /> : <Eye size={16} />}{product.published ? "Sembunyikan" : "Tampilkan"}</button>
-                      <button className="btn btn-danger" onClick={() => removeProduct(product.id)}><Trash2 size={16} /> Hapus</button>
-                    </div>
-                  </div>
-                ))
+              {editingId && (
+                <button onClick={resetForm} className={cn('rounded-2xl border px-4 py-2 text-sm', input)}>
+                  Reset
+                </button>
               )}
             </div>
+
+            <div className="space-y-4">
+              <input value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} placeholder="Nama produk" className={cn('w-full rounded-2xl border px-4 py-3 outline-none', input)} />
+              <div className="grid grid-cols-2 gap-4">
+                <input value={form.category} onChange={(e) => setForm((prev) => ({ ...prev, category: e.target.value }))} placeholder="Kategori" className={cn('w-full rounded-2xl border px-4 py-3 outline-none', input)} />
+                <input value={String(form.stock)} onChange={(e) => setForm((prev) => ({ ...prev, stock: Number(e.target.value || 0) }))} placeholder="Stok" type="number" className={cn('w-full rounded-2xl border px-4 py-3 outline-none', input)} />
+              </div>
+              <input value={String(form.price)} onChange={(e) => setForm((prev) => ({ ...prev, price: Number(e.target.value || 0) }))} placeholder="Harga" type="number" className={cn('w-full rounded-2xl border px-4 py-3 outline-none', input)} />
+              <textarea value={form.description} onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))} placeholder="Deskripsi" className={cn('min-h-[100px] w-full rounded-2xl border px-4 py-3 outline-none', input)} />
+
+              <div className={cn('rounded-[24px] border border-dashed p-5', input)}>
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-[#4f342b] px-4 py-3 font-semibold text-white">
+                  <Upload className="h-4 w-4" /> Upload gambar dari galeri
+                  <input type="file" accept="image/*" onChange={onFileChange} className="hidden" />
+                </label>
+                {form.image_url && <img src={form.image_url} alt="preview" className="mt-4 h-40 w-40 rounded-2xl object-cover" />}
+              </div>
+
+              <div>
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-medium">Label / tag</p>
+                  <p className={cn('text-xs', soft)}>Klik tag tersimpan atau buat tag baru</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {storedTags.map((tag) => (
+                    <button key={tag} type="button" onClick={() => addTag(tag)} className={cn('rounded-full border px-3 py-2 text-xs font-medium', input)}>
+                      {tag}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <input value={tagInput} onChange={(e) => setTagInput(e.target.value)} placeholder="Ketik label baru..." className={cn('flex-1 rounded-2xl border px-4 py-3 outline-none', input)} />
+                  <button onClick={() => { addTag(tagInput); setTagInput(''); }} className="rounded-2xl bg-[#4f342b] px-4 py-3 font-semibold text-white">
+                    Simpan label
+                  </button>
+                </div>
+                {form.tags.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {form.tags.map((tag) => (
+                      <button key={tag} type="button" onClick={() => removeTag(tag)} className={cn('inline-flex items-center gap-2 rounded-full border px-3 py-2 text-xs font-medium', input)}>
+                        #{tag} <X className="h-3 w-3" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <label className="inline-flex items-center gap-3">
+                <input type="checkbox" checked={form.is_published} onChange={(e) => setForm((prev) => ({ ...prev, is_published: e.target.checked }))} />
+                <span className="text-sm">Tampilkan di web buyer</span>
+              </label>
+
+              <div className="flex gap-3">
+                <button onClick={handleSubmit} className="inline-flex items-center gap-2 rounded-2xl bg-[#4f342b] px-5 py-3 font-semibold text-white">
+                  <Save className="h-4 w-4" /> {editingId ? 'Simpan perubahan' : 'Tambah produk'}
+                </button>
+                <button onClick={resetForm} className={cn('rounded-2xl border px-5 py-3 font-semibold', input)}>
+                  Kosongkan
+                </button>
+              </div>
+            </div>
           </section>
-        </>
-      ) : (
-        <section className="grid grid-2">
-          <div className="panel" style={{ padding: 24 }}>
-            <div className="stack-md">
-              <div className="stack-sm">
-                <span className="badge"><BadgePlus size={16} /> Form produk</span>
-                <h2 className="title-lg">{form.id ? "Edit produk" : "Tambah produk baru"}</h2>
-                <p className="muted">Tambahkan informasi lengkap lalu pilih apakah produk langsung tampil di buyer atau disimpan sebagai draft.</p>
+
+          <section className={cn('rounded-[28px] border p-5', card)}>
+            <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-xl font-bold">Daftar produk</h2>
+                <p className={cn('mt-1 text-sm', soft)}>Edit, hapus, dan ubah status tayang dengan cepat.</p>
               </div>
-
-              <form className="stack-md" onSubmit={handleSubmit}>
-                <div className="field">
-                  <label className="label">Nama produk</label>
-                  <input className="input" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="Contoh: Basic Knit Cardigan" required />
-                </div>
-
-                <div className="grid grid-2">
-                  <div className="field">
-                    <label className="label">Kategori</label>
-                    <input className="input" value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })} placeholder="Fashion, Aksesoris, dll" />
-                  </div>
-                  <div className="field">
-                    <label className="label">Stok</label>
-                    <input className="input" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} placeholder="0" min={0} />
-                  </div>
-                </div>
-
-                <div className="grid grid-2">
-                  <div className="field">
-                    <label className="label">Harga</label>
-                    <input className="input" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} placeholder="75000" min={0} required />
-                  </div>
-                  <div className="field">
-                    <label className="label">Status tayang</label>
-                    <select className="select" value={form.published ? "published" : "draft"} onChange={(e) => setForm({ ...form, published: e.target.value === "published" })}>
-                      <option value="published">Tampilkan di buyer</option>
-                      <option value="draft">Simpan sebagai draft</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="field">
-                  <label className="label">Deskripsi</label>
-                  <textarea className="textarea" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Tulis detail produk, bahan, ukuran, atau keunggulan produk di sini..." />
-                </div>
-
-                <div className="upload-box">
-                  <ImagePlus size={34} />
-                  <div className="stack-sm" style={{ textAlign: "center" }}>
-                    <b>Upload gambar dari galeri</b>
-                    <span className="muted">Pilih foto dari perangkat. Sistem akan menyimpan dan menampilkan preview otomatis.</span>
-                  </div>
-                  <label className="btn btn-primary" style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
-                    <Upload size={16} /> Pilih Gambar
-                    <input hidden type="file" accept="image/*" onChange={handleImageUpload} />
-                  </label>
-                  <span className="muted">Atau tempel manual lewat link/data URL di bawah ini bila diperlukan.</span>
-                  <input className="input" value={form.image_url} onChange={(e) => setForm({ ...form, image_url: e.target.value })} placeholder="Link gambar atau hasil upload akan muncul di sini" />
-                </div>
-
-                <div className="row wrap">
-                  <button className="btn btn-primary" type="submit" disabled={submitState === "saving"}>{submitState === "saving" ? "Menyimpan..." : form.id ? "Simpan perubahan" : "Tambah produk"}</button>
-                  <button className="btn btn-soft" type="button" onClick={resetForm}>Reset form</button>
-                </div>
-              </form>
-            </div>
-          </div>
-
-          <div className="panel" style={{ padding: 24 }}>
-            <div className="stack-md">
-              <div className="stack-sm">
-                <span className="badge soft">Preview instan</span>
-                <h2 className="title-lg">Tampilan produk</h2>
-                <p className="muted">Preview ini membantu Anda mengecek hasil akhir sebelum dipublikasikan ke web buyer.</p>
-              </div>
-
-              <div className="card" style={{ padding: 18 }}>
-                <img className="preview" src={form.image_url || "https://placehold.co/800x600/f4e3d6/8f5a40?text=Preview+Tipjen"} alt="Preview produk" />
-                <div className="stack-sm" style={{ marginTop: 16 }}>
-                  <div className="row wrap">
-                    <span className="badge soft">{form.category || "Kategori"}</span>
-                    <span className={`badge ${form.published ? "green" : ""}`}>{form.published ? "Akan tampil di buyer" : "Masih draft"}</span>
-                  </div>
-                  <h3 className="title-md">{form.name || "Nama produk akan tampil di sini"}</h3>
-                  <div className="price">{formatter.format(Number(form.price || 0))}</div>
-                  <p className="muted">{form.description || "Deskripsi produk akan tampil di area ini agar Anda bisa mengecek tampilan sebelum publish."}</p>
-                  <div className="separator" />
-                  <p className="muted">Stok: {form.stock || 0}</p>
-                </div>
+              <div className="relative w-full lg:w-80">
+                <Search className={cn('absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2', soft)} />
+                <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Cari produk..." className={cn('w-full rounded-2xl border py-3 pl-11 pr-4 outline-none', input)} />
               </div>
             </div>
-          </div>
-        </section>
-      )}
+
+            <div className="space-y-4">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className={cn('flex flex-col gap-4 rounded-[24px] border p-4 lg:flex-row lg:items-center', dark ? 'border-white/10 bg-white/5' : 'border-[#efe0d5] bg-[#fffaf6]')}>
+                  <img src={product.image_url || 'https://placehold.co/160x160?text=Tipjen'} alt={product.name} className="h-24 w-24 rounded-[20px] object-cover" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h3 className="truncate text-lg font-bold">{product.name}</h3>
+                      <span className={cn('rounded-full px-3 py-1 text-xs font-medium', product.is_published ? (dark ? 'bg-emerald-400/15 text-emerald-300' : 'bg-emerald-100 text-emerald-700') : dark ? 'bg-amber-400/15 text-amber-300' : 'bg-amber-100 text-amber-700')}>
+                        {product.is_published ? 'Tayang di buyer' : 'Disembunyikan'}
+                      </span>
+                    </div>
+                    <p className={cn('mt-1 text-sm', soft)}>{product.category || 'Lainnya'} • Stok {product.stock}</p>
+                    {product.tags?.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {product.tags.map((tag) => (
+                          <span key={tag} className={cn('rounded-full px-3 py-1 text-xs font-medium', dark ? 'bg-white/10 text-slate-200' : 'bg-[#f4e8df] text-[#7d5f52]')}>
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <p className="mt-2 font-semibold">{formatRupiah(Number(product.price))}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button onClick={() => toggleProduct(product.id, !product.is_published)} className={cn('inline-flex items-center gap-2 rounded-2xl px-4 py-2 text-sm font-medium', dark ? 'bg-white text-slate-900' : 'bg-[#4f342b] text-white')}>
+                      {product.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {product.is_published ? 'Sembunyikan' : 'Tampilkan'}
+                    </button>
+                    <button onClick={() => startEdit(product)} className={cn('inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-medium', input)}>
+                      <Pencil className="h-4 w-4" /> Edit
+                    </button>
+                    <button onClick={() => deleteProduct(product.id)} className={cn('inline-flex items-center gap-2 rounded-2xl border px-4 py-2 text-sm font-medium', dark ? 'border-red-400/20 bg-red-400/10 text-red-300' : 'border-red-200 bg-red-50 text-red-600')}>
+                      <Trash2 className="h-4 w-4" /> Hapus
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </div>
+      </div>
     </div>
   );
 }
