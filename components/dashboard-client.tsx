@@ -43,19 +43,19 @@ export default function DashboardClient({
   const totalPublished = products.filter((item) => item.is_published).length;
   const totalHidden = products.filter((item) => !item.is_published).length;
 
-  const selectForEdit = (item: Product) => {
-    setForm({
-     id: String(item.id),
-      name: item.name,
-      description: item.description,
-      category: item.category,
-      price: String(item.price),
-      stock: String(item.stock),
-      image_url: item.image_url,
-      tags: item.tags ?? [],
-      is_published: item.is_published,
-    });
-  };
+const selectForEdit = (item: Product) => {
+  setForm({
+    id: String(item.id),
+    name: item.name ?? "",
+    description: item.description ?? "",
+    category: item.category ?? "",
+    price: String(item.price ?? 0),
+    stock: String(item.stock ?? 0),
+    image_url: item.image_url ?? "",
+    tags: item.tags ?? [],
+    is_published: item.is_published ?? true,
+  });
+};
 
   const resetForm = () => setForm(emptyForm);
 
